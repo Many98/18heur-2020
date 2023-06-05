@@ -29,14 +29,14 @@ class ObjFun(object):
         """
         return [self.a, self.b]
 
-    def generate_point(self):
+    def generate_point(self, *args, **kwargs):
         """
         Random point generator placeholder
         :return: random point from the domain
         """
         raise NotImplementedError("Objective function must implement its own random point generator")
 
-    def get_neighborhood(self, x):
+    def get_neighborhood(self, x, *args, **kwargs):
         """
         Solution neighborhood generating function placeholder
         :param x: point
