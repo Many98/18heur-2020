@@ -55,6 +55,37 @@ class UniformMultipoint(Crossover):
             z[ix_from:ix_to] = x[ix_from:ix_to] if np.mod(i, 2) == 1 else y[ix_from:ix_to]
             k += p
         return z
+    
+class RandomExchange(Crossover):
+    """
+    Randomly combines parents
+    """
+
+    def __init__(self):
+        pass
+
+    def crossover(self, x, y):
+
+        if is_integer(x):
+            z = np.array([sample([x[i], y[i]], 1)[0] for i in np.arange(x.size)],
+                         dtype=x.dtype)
+            return z
+        else:
+            return x
+        
+class MinConflict(Crossover):
+    """
+    Greedy approach which takes takes gene from parent which have at particular gene less number of conflicts
+    """
+
+    def __init__(self, graph):
+        self.g = graph
+
+    def crossover(self, x, y):
+        xx = self.g.get_conflicts(x).sum(0)
+        yy = self.g.get_conflicts(y).sum(0)
+        return np.array([x[i] if xx[i] < yy[i] else y[i] for i in range(x.shape[0])])
+
 
 
 class RandomCombination(Crossover):
@@ -102,7 +133,7 @@ class GeneticOptimization(Heuristic):
         ix = np.minimum(np.ceil(-temp*np.log(u)), n_max)-1
         return ix.astype(int)
     
-    def evaluate(self, x):
+    def evaluate(self, x, type_):
         """
         Single evaluation of the objective function
         :param x: point to be evaluated
@@ -111,7 +142,7 @@ class GeneticOptimization(Heuristic):
         x = [kk for kk in x]
 
         # paralelized evaluation of multiple candidate colourings (in this case population)
-        y = self.of.eval_neighbours(x)
+        y = self.of.eval_neighbours(x, type_=type_)
             
         self.neval += 1
         arg_best = np.argmin(y)
@@ -126,7 +157,7 @@ class GeneticOptimization(Heuristic):
             raise StopCriterion('Exhausted maximum allowed number of evaluations')
         return y
 
-    def search(self, n_colors):
+    def search(self, n_colors, type_):
 
         try:
             
@@ -140,7 +171,7 @@ class GeneticOptimization(Heuristic):
                 pop_X[i, :] = x
             
             # paralelized evaluation
-            pop_f = np.array(self.evaluate(pop_X))
+            pop_f = np.array(self.evaluate(pop_X, type_))
 
             # b.) sort according to fitness function
             [pop_X, pop_f] = self.sort_pop(pop_X, pop_f)
@@ -165,7 +196,7 @@ class GeneticOptimization(Heuristic):
                     work_pop_X[i, :] = z_mut
 
                 # paralelized evaluation
-                work_pop_f = np.array(self.evaluate(work_pop_X))
+                work_pop_f = np.array(self.evaluate(work_pop_X, type_))
 
                 # 2.) sort working population according to fitness function
                 [work_pop_X, work_pop_f] = self.sort_pop(work_pop_X, work_pop_f)
@@ -186,57 +217,3 @@ class GeneticOptimization(Heuristic):
         except:
             raise
 
-
-class TabuSearch(Heuristic):
-    
-    def __init__(self, of, maxeval):
-
-        Heuristic.__init__(self, of, maxeval)
-
-    def search(self):
-        try:
-            # Initialization:
-            pop_X = np.zeros([self.N, np.size(self.of.a)], dtype=self.of.a.dtype)  # population solution vectors
-            pop_f = np.zeros(self.N)  # population fitness (objective) function values
-            # a.) generate the population
-            for i in np.arange(self.N):
-                x = self.of.generate_point()
-                pop_X[i, :] = x
-                pop_f[i] = self.evaluate(x)
-
-            # b.) sort according to fitness function
-            [pop_X, pop_f] = self.sort_pop(pop_X, pop_f)
-
-            # Evolution iteration
-            while True:
-                # 1.) generate the working population
-                work_pop_X = np.zeros([self.M, np.size(self.of.a)], dtype=self.of.a.dtype)
-                work_pop_f = np.zeros(self.M)
-                for i in np.arange(self.M):
-                    parent_a_ix = self.rank_select(temp=self.Tsel1, n_max=self.N)  # select first parent
-                    parent_b_ix = self.rank_select(temp=self.Tsel1, n_max=self.N)  # 2nd --//-- (not unique!)
-                    par_a = pop_X[parent_a_ix, :][0]
-                    par_b = pop_X[parent_b_ix, :][0]
-                    z = self.crossover.crossover(par_a, par_b)
-                    z_mut = self.mutation.mutate(z)
-                    work_pop_X[i, :] = z_mut
-                    work_pop_f[i] = self.evaluate(z_mut)
-
-                # 2.) sort working population according to fitness function
-                [work_pop_X, work_pop_f] = self.sort_pop(work_pop_X, work_pop_f)
-
-                # 3.) select the new population
-                ixs_not_selected = np.ones(self.M, dtype=bool)  # this mask will prevent us from selecting duplicates
-                for i in np.arange(self.N):
-                    sel_ix = self.rank_select(temp=self.Tsel2, n_max=np.sum(ixs_not_selected))
-                    pop_X[i, :] = work_pop_X[ixs_not_selected][sel_ix, :]
-                    pop_f[i] = work_pop_f[ixs_not_selected][sel_ix]
-                    ixs_not_selected[sel_ix] = False
-
-                # 4.) sort according to fitness function
-                [pop_X, pop_f] = self.sort_pop(pop_X, pop_f)
-
-        except StopCriterion:
-            return self.report_end()
-        except:
-            raise
